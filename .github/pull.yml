@@ -1,0 +1,13 @@
+version: "1"
+rules:
+  # Keep main branch in sync with upstream LibreChat
+  - base: main
+    upstream: danny-avila:main
+    mergeMethod: merge
+    mergeUnstable: false
+    assignees:
+      - ckybryan
+    reviewers:
+      - ckybryan
+    conflictReviewers:
+      - ckybryan
