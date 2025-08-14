@@ -1,0 +1,86 @@
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    # Runs daily at 2 AM UTC (adjust time as needed)
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      
+      - name: Set up Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+      
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/danny-avila/LibreChat.git
+          git fetch upstream
+      
+      - name: Check if sync is needed
+        id: check_sync
+        run: |
+          # Get the latest commit from upstream main
+          UPSTREAM_COMMIT=$(git rev-parse upstream/main)
+          # Get the latest commit from local main
+          LOCAL_COMMIT=$(git rev-parse origin/main)
+          
+          echo "Upstream commit: $UPSTREAM_COMMIT"
+          echo "Local commit: $LOCAL_COMMIT"
+          
+          if [ "$UPSTREAM_COMMIT" != "$LOCAL_COMMIT" ]; then
+            echo "sync_needed=true" >> $GITHUB_OUTPUT
+            echo "New commits found in upstream, sync needed"
+          else
+            echo "sync_needed=false" >> $GITHUB_OUTPUT
+            echo "Repository is already up to date"
+          fi
+      
+      - name: Merge upstream changes
+        if: steps.check_sync.outputs.sync_needed == 'true'
+        run: |
+          # Switch to main branch
+          git checkout main
+          
+          # Try to merge upstream changes
+          if git merge upstream/main --no-edit; then
+            echo "✅ Successfully merged upstream changes"
+            
+            # Push the changes
+            git push origin main
+            echo "✅ Successfully pushed changes to fork"
+            
+            # Create a summary
+            echo "## Sync Summary" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Successfully synced with upstream LibreChat repository" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Changes merged:" >> $GITHUB_STEP_SUMMARY
+            git log --oneline HEAD~10..HEAD >> $GITHUB_STEP_SUMMARY
+            
+          else
+            echo "❌ Merge conflict detected"
+            echo "## ⚠️ Sync Failed" >> $GITHUB_STEP_SUMMARY
+            echo "Merge conflicts detected. Manual intervention required." >> $GITHUB_STEP_SUMMARY
+            echo "Please resolve conflicts manually and push changes." >> $GITHUB_STEP_SUMMARY
+            
+            # Abort the merge
+            git merge --abort
+            exit 1
+          fi
+      
+      - name: No sync needed
+        if: steps.check_sync.outputs.sync_needed == 'false'
+        run: |
+          echo "## Sync Status" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Repository is already up to date with upstream" >> $GITHUB_STEP_SUMMARY
+          echo "No changes to merge." >> $GITHUB_STEP_SUMMARY
